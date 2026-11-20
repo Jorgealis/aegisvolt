@@ -1,0 +1,34 @@
+# Ambiente dev: namespace propio, ConfigMap del ambiente y 1 réplica(s) por servicio.
+# SURGE_HOURS=00-24 en dev: la tarifa dinámica se ve en cualquier momento al activar la flag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: aegisvolt-dev
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+# El análisis del canary lee este label para filtrar las métricas del ambiente.
+labels:
+  - pairs:
+      aegisvolt.io/env: dev
+    includeSelectors: false
+
+generatorOptions:
+  disableNameSuffixHash: true # los Rollouts (CRD) referencian el ConfigMap por nombre fijo
+
+configMapGenerator:
+  - name: aegisvolt-config
+    literals:
+      - ENV=dev
+      - AWS_REGION=us-east-1
+      - SURGE_HOURS=00-24
+
+patches:
+  - target:
+      kind: Rollout
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
