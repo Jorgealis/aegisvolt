@@ -1,0 +1,22 @@
+[tool.pytest.ini_options]
+pythonpath = [
+  "services/common",
+  "services/station-reservation-service",
+  "services/billing-wallet-service",
+  "services/energy-dispatch-service",
+  "services/graphql-gateway",
+]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 160
+target-version = "py312"
+src = ["services/common", "services/station-reservation-service", "services/billing-wallet-service", "services/energy-dispatch-service", "services/graphql-gateway"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["aegis_common", "station_reservation", "billing_wallet", "energy_dispatch", "graphql_gateway"]
