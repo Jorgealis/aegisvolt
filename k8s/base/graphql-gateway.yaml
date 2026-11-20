@@ -1,0 +1,113 @@
+# Generado por scripts/gen_k8s_base.py: no editar a mano.
+apiVersion: v1
+kind: Service
+metadata:
+  name: graphql-gateway
+  labels:
+    app: graphql-gateway
+spec:
+  type: NodePort
+  selector:
+    app: graphql-gateway
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      nodePort: 30080 # destino del NLB (API Gateway -> VPC Link -> NLB)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: graphql-gateway
+  labels:
+    app: graphql-gateway
+spec:
+  replicas: 1 # cada overlay fija las réplicas del ambiente
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: graphql-gateway
+  template:
+    metadata:
+      labels:
+        app: graphql-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: aegisvolt/graphql-gateway # el pipeline fija <ECR>/aegisvolt/graphql-gateway:<sha>
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: ENV
+              valueFrom:
+                configMapKeyRef: { name: aegisvolt-config, key: ENV }
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef: { name: aegisvolt-config, key: AWS_REGION }
+            - name: SERVICE_NAME
+              value: graphql-gateway
+            - name: CLOUDWATCH_LOG_GROUP
+              value: /aegisvolt/$(ENV)/graphql-gateway
+            # Versión = hash de la plantilla del pod: separa stable y canary en
+            # los logs y en las métricas que evalúa el análisis del canary.
+            - name: APP_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['rollouts-pod-template-hash']
+            - name: RESERVATION_URL
+              value: "http://station-reservation-service:8000"
+            - name: BILLING_URL
+              value: "http://billing-wallet-service:8000"
+            - name: DISPATCH_URL
+              value: "http://energy-dispatch-service:8000"
+            - name: CORS_ORIGINS
+              value: "*"
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+  strategy:
+    canary:
+      # Sin traffic router: el peso se logra con réplicas (5 réplicas -> 1 pod canary = 20 %).
+      steps:
+        - setWeight: 20
+        - pause: { duration: 60s }
+        - analysis:
+            templates:
+              - templateName: error-rate-cloudwatch
+            args:
+              - name: service
+                value: graphql-gateway
+              - name: version
+                valueFrom:
+                  podTemplateHashValue: Latest
+              - name: env
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.labels['aegisvolt.io/env']
+        - setWeight: 50
+        - pause: { duration: 30s }
+        - setWeight: 100

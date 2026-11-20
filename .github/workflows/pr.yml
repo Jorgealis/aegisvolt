@@ -52,6 +52,17 @@ jobs:
             dir="${svc%%:*}"; pkg="${svc##*:}"
             docker build -q -f services/Dockerfile --build-arg SERVICE_DIR="$dir" --build-arg PACKAGE="$pkg" -t "aegisvolt/$dir:ci" services
           done
+      - name: Manifiestos Kubernetes (generados al día + kustomize + kubeconform con CRDs de Argo)
+        run: |
+          python scripts/gen_k8s_base.py >/dev/null && git diff --exit-code k8s/base
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          for e in dev test prod; do
+            echo "== overlay $e"
+            kubectl kustomize "k8s/overlays/$e" | ./kubeconform -strict -summary \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          done
+          kubectl kustomize k8s/platform/argo-rollouts > /dev/null
       - uses: hashicorp/setup-terraform@v3
       - name: terraform fmt
         run: terraform fmt -check -recursive infra

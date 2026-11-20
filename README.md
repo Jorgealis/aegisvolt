@@ -33,4 +33,15 @@ Todo está declarado en Terraform; la plataforma con costo por hora queda **apag
 enable_platform = true
 ```
 
+## Kubernetes y canary
+
+- `k8s/base/`: un `Rollout` de Argo + `Service` por servicio (generados con `scripts/gen_k8s_base.py`) y la `AnalysisTemplate` `error-rate-cloudwatch`.
+- `k8s/overlays/<env>/`: namespace `aegisvolt-<env>`, ConfigMap del ambiente y réplicas (dev 1, test 2, prod 5).
+- `k8s/platform/argo-rollouts/`: controlador de Argo Rollouts v1.10.2 con `AWS_REGION` para el proveedor CloudWatch.
+
+**Canary** (`deploy.yml`, solo con la plataforma encendida): build y push a ECR con tag = SHA → `kubectl apply -k` → `setWeight 20` → pausa 60 s → análisis → `setWeight 50` → `setWeight 100`.
+Condición: `ErrorCount / RequestCount < 2 %` de la **versión nueva** (dimensión `Version` = hash de la plantilla del pod), 4 mediciones cada 30 s; 2 fallidas → aborto y rollback automático a la versión estable.
+
+**Demo de rollback:** PR que añade `FAULT_INJECTION_RATE: "0.3"` al `graphql-gateway` del overlay, tráfico con `python scripts/load.py --url <graphql_url>` y `kubectl argo rollouts get rollout graphql-gateway -n aegisvolt-dev --watch`.
+
 **Apagar al terminar:** volver a `false` y fusionar el PR; Terraform destruye EKS, NAT, NLB y API Gateway y deja la red gratuita. Al cerrar el proyecto: `terraform destroy` en cada workspace. Hay una alerta de presupuesto mensual (`aegisvolt-monthly`, USD 20).

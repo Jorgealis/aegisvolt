@@ -259,3 +259,40 @@ resource "aws_iam_role_policy_attachment" "apigw_logs" {
 resource "aws_api_gateway_account" "this" {
   cloudwatch_role_arn = aws_iam_role.apigw_logs.arn
 }
+
+# ---------------------------------------------------------------------------
+# ECR: una imagen por servicio, compartida por los 3 ambientes (se promueve
+# el MISMO artefacto, etiquetado con el SHA del commit, de dev a test a prod).
+# Costo: solo almacenamiento (~USD 0,10/GB-mes); se guardan las últimas 10.
+# ---------------------------------------------------------------------------
+locals {
+  services = ["station-reservation-service", "billing-wallet-service", "energy-dispatch-service", "graphql-gateway"]
+}
+
+resource "aws_ecr_repository" "svc" {
+  for_each             = toset(local.services)
+  name                 = "aegisvolt/${each.key}"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true # permite borrar todo al cerrar el proyecto
+
+  image_scanning_configuration {
+    scan_on_push = true # escaneo básico: gratis
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "svc" {
+  for_each   = aws_ecr_repository.svc
+  repository = each.value.name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Conservar solo las 10 imágenes más recientes"
+      selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 10 }
+      action       = { type = "expire" }
+    }]
+  })
+}
+
+output "ecr_registry" {
+  value = split("/", aws_ecr_repository.svc["graphql-gateway"].repository_url)[0]
+}
