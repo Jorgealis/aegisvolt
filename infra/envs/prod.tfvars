@@ -7,3 +7,8 @@ feature_flags = {
   ENABLE_FAST_CHARGE_BOOST        = false
   SIMULATE_CHARGER_HARDWARE_FAULT = false
 }
+
+# Plataforma con costo por hora (EKS, NAT, NLB, API Gateway): apagada.
+# Encender SOLO para la demo/sustentación: enable_platform = true
+enable_platform = false
+node_desired    = 2
