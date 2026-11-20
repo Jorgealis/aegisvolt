@@ -1,0 +1,62 @@
+# Stack local para desarrollo, integración y e2e (sin costo de AWS):
+#   docker compose up -d --build --wait
+#   python scripts/seed.py --env local --endpoint http://localhost:8001 --create-tables
+#   GraphQL: http://localhost:8080/graphql
+#
+# Contra las tablas reales de dev en AWS (y logs a CloudWatch):
+#   docker compose -f docker-compose.yml -f docker-compose.aws.yml up -d --build
+
+x-service: &service
+  build: &build
+    context: ./services
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  environment: &env
+    ENV: local
+    APP_VERSION: local
+    AWS_REGION: us-east-1
+    AWS_ACCESS_KEY_ID: local
+    AWS_SECRET_ACCESS_KEY: local
+    DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+  depends_on:
+    dynamodb-local:
+      condition: service_started
+
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports: ["8001:8000"]
+
+  station-reservation-service:
+    <<: *service
+    build: { <<: *build, args: { SERVICE_DIR: station-reservation-service, PACKAGE: station_reservation } }
+    environment: { <<: *env, SERVICE_NAME: station-reservation }
+    ports: ["8101:8000"]
+
+  billing-wallet-service:
+    <<: *service
+    build: { <<: *build, args: { SERVICE_DIR: billing-wallet-service, PACKAGE: billing_wallet } }
+    environment: { <<: *env, SERVICE_NAME: billing-wallet, SURGE_HOURS: "18-21" }
+    ports: ["8102:8000"]
+
+  energy-dispatch-service:
+    <<: *service
+    build: { <<: *build, args: { SERVICE_DIR: energy-dispatch-service, PACKAGE: energy_dispatch } }
+    environment: { <<: *env, SERVICE_NAME: energy-dispatch }
+    ports: ["8103:8000"]
+
+  graphql-gateway:
+    <<: *service
+    build: { <<: *build, args: { SERVICE_DIR: graphql-gateway, PACKAGE: graphql_gateway } }
+    environment:
+      <<: *env
+      SERVICE_NAME: graphql-gateway
+      RESERVATION_URL: http://station-reservation-service:8000
+      BILLING_URL: http://billing-wallet-service:8000
+      DISPATCH_URL: http://energy-dispatch-service:8000
+    ports: ["8080:8000"]
+    depends_on:
+      - station-reservation-service
+      - billing-wallet-service
+      - energy-dispatch-service

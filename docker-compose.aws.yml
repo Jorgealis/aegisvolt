@@ -1,0 +1,29 @@
+# Override: los contenedores locales usan las tablas y log groups REALES de dev.
+# Usa tus credenciales de ~/.aws (solo lectura dentro del contenedor).
+#   docker compose -f docker-compose.yml -f docker-compose.aws.yml up -d --build
+#   python scripts/seed.py --env dev
+x-aws-env: &aws-env
+  ENV: dev
+  APP_VERSION: local-aws
+  DYNAMODB_ENDPOINT: ""
+  AWS_ACCESS_KEY_ID: !reset null
+  AWS_SECRET_ACCESS_KEY: !reset null
+  AWS_SHARED_CREDENTIALS_FILE: /home/app/.aws/credentials
+  AWS_CONFIG_FILE: /home/app/.aws/config
+
+x-aws-volume: &aws-volume
+  - ${USERPROFILE:-${HOME}}/.aws:/home/app/.aws:ro
+
+services:
+  station-reservation-service:
+    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: /aegisvolt/dev/station-reservation }
+    volumes: *aws-volume
+  billing-wallet-service:
+    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: /aegisvolt/dev/billing-wallet }
+    volumes: *aws-volume
+  energy-dispatch-service:
+    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: /aegisvolt/dev/energy-dispatch }
+    volumes: *aws-volume
+  graphql-gateway:
+    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: /aegisvolt/dev/graphql-gateway }
+    volumes: *aws-volume
