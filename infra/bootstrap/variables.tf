@@ -23,6 +23,7 @@ variable "budget_limit_usd" {
 }
 
 variable "budget_email" {
-  description = "Correo que recibe las alertas de presupuesto (va en terraform.tfvars, no se versiona)"
+  description = "Correo que recibe las alertas de presupuesto (va en terraform.tfvars, no se versiona). Vacío = sin alerta"
   type        = string
+  default     = ""
 }
