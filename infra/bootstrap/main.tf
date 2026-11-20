@@ -206,6 +206,7 @@ resource "aws_iam_role_policy_attachment" "gha_deploy_admin" {
 # Alerta de presupuesto (las 2 primeras budgets de la cuenta son gratis)
 # ---------------------------------------------------------------------------
 resource "aws_budgets_budget" "monthly" {
+  count        = var.budget_email == "" ? 0 : 1
   name         = "aegisvolt-monthly"
   budget_type  = "COST"
   limit_amount = tostring(var.budget_limit_usd)
