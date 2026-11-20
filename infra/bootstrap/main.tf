@@ -231,3 +231,31 @@ resource "aws_budgets_budget" "monthly" {
     }
   }
 }
+
+# ---------------------------------------------------------------------------
+# API Gateway -> CloudWatch Logs (ajuste de TODA la cuenta, por eso vive aquí
+# y no en los workspaces). Permite los access logs en /aegisvolt/<env>/apigw.
+# ---------------------------------------------------------------------------
+data "aws_iam_policy_document" "apigw_trust" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["apigateway.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "apigw_logs" {
+  name               = "aegisvolt-apigw-cloudwatch"
+  assume_role_policy = data.aws_iam_policy_document.apigw_trust.json
+}
+
+resource "aws_iam_role_policy_attachment" "apigw_logs" {
+  role       = aws_iam_role.apigw_logs.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+}
+
+resource "aws_api_gateway_account" "this" {
+  cloudwatch_role_arn = aws_iam_role.apigw_logs.arn
+}
