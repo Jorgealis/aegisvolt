@@ -1,0 +1,105 @@
+name: pr-checks
+
+# Checks obligatorios antes de habilitar el Merge hacia dev / test / prod.
+# Los nombres de los jobs son los "status checks" exigidos por el ruleset
+# protected-envs (docs/rulesets/protected-envs.json).
+on:
+  pull_request:
+    branches: [dev, test, prod]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  enforce-promotion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validar cadena feature/* -> dev -> test -> prod
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          echo "PR: $HEAD -> $BASE"
+          if [[ "$BASE" == "dev"  && "$HEAD" != feature/* ]]; then echo "::error::Solo feature/* -> dev";  exit 1; fi
+          if [[ "$BASE" == "test" && "$HEAD" != "dev"      ]]; then echo "::error::Solo dev -> test";    exit 1; fi
+          if [[ "$BASE" == "prod" && "$HEAD" != "test"     ]]; then echo "::error::Solo test -> prod";   exit 1; fi
+          echo "Promoción válida"
+
+  lint-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: terraform fmt
+        run: terraform fmt -check -recursive infra
+      - name: terraform validate (bootstrap)
+        working-directory: infra/bootstrap
+        run: terraform init -backend=false -input=false && terraform validate
+      - name: terraform validate (ambientes)
+        if: hashFiles('infra/main.tf') != ''
+        working-directory: infra
+        run: terraform init -backend=false -input=false && terraform validate
+      # Fases 4-5: ruff, validación del esquema GraphQL y docker build de las imágenes
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests
+        run: |
+          if [ ! -d tests/unit ]; then echo "Sin tests unitarios todavía (Fase 4)"; exit 0; fi
+          pip install -r requirements-dev.txt && pytest tests/unit -q
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integration tests
+        run: |
+          if [ ! -d tests/integration ]; then echo "Sin tests de integración todavía (Fase 4)"; exit 0; fi
+          pip install -r requirements-dev.txt && pytest tests/integration -q
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: E2E tests
+        run: |
+          if [ ! -d tests/e2e ]; then echo "Sin tests e2e todavía (Fase 5)"; exit 0; fi
+          pip install -r requirements-dev.txt && pytest tests/e2e -q
+
+  terraform-plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC -> rol aegisvolt-gha-plan (solo lectura)
+    env:
+      TARGET_ENV: ${{ github.base_ref }} # workspace = rama destino (dev | test | prod)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sin stack de ambientes todavía
+        if: hashFiles('infra/main.tf') == ''
+        run: echo "infra/main.tf aún no existe (Fase 1); nada que planear"
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: hashFiles('infra/main.tf') != ''
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: hashicorp/setup-terraform@v3
+        if: hashFiles('infra/main.tf') != ''
+      - name: terraform plan (${{ env.TARGET_ENV }})
+        if: hashFiles('infra/main.tf') != ''
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform workspace select "$TARGET_ENV"
+          terraform plan -input=false -var-file="envs/$TARGET_ENV.tfvars" -no-color | tee plan.txt
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('infra/plan.txt') != ''
+        with:
+          name: plan-${{ github.base_ref }}
+          path: infra/plan.txt
