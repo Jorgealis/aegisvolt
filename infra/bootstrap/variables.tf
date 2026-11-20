@@ -4,10 +4,19 @@ variable "region" {
   default     = "us-east-1"
 }
 
-variable "github_repo" {
-  description = "Repositorio GitHub en formato owner/name (para la confianza OIDC)"
-  type        = string
-  default     = "Jorgealis/aegisvolt"
+
+variable "github_sub_prefixes" {
+  description = <<-EOT
+    Prefijos del claim "sub" del token OIDC de GitHub. Los repos nuevos usan el
+    formato inmutable repo:<owner>@<owner_id>/<repo>@<repo_id> (ver
+    gh api repos/<owner>/<repo>/actions/oidc/customization/sub); se acepta
+    también el formato clásico repo:<owner>/<repo>.
+  EOT
+  type        = list(string)
+  default = [
+    "repo:Jorgealis@170771367/aegisvolt@1465021447",
+    "repo:Jorgealis/aegisvolt",
+  ]
 }
 
 variable "create_oidc_provider" {
