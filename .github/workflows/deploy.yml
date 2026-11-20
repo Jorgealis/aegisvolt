@@ -1,0 +1,53 @@
+name: deploy
+
+# Post-merge. El push directo a dev/test/prod está bloqueado por el ruleset,
+# así que este workflow solo corre cuando se fusiona un PR.
+on:
+  push:
+    branches: [dev, test, prod]
+
+permissions:
+  contents: read
+
+# Nunca dos despliegues simultáneos del mismo ambiente.
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-env:
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.e.outputs.env }}
+    steps:
+      - id: e
+        # Detección dinámica del ambiente: la rama destino del merge
+        # (GITHUB_REF_NAME = dev | test | prod) es el nombre del workspace.
+        run: echo "env=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+  terraform-apply:
+    needs: resolve-env
+    runs-on: ubuntu-latest
+    # El GitHub Environment da el claim OIDC "environment:<env>", el único que
+    # puede asumir el rol aegisvolt-gha-deploy.
+    environment: ${{ needs.resolve-env.outputs.env }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET_ENV: ${{ needs.resolve-env.outputs.env }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: hashicorp/setup-terraform@v3
+      - name: terraform apply (${{ env.TARGET_ENV }})
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform workspace select "$TARGET_ENV"
+          terraform apply -input=false -auto-approve -var-file="envs/$TARGET_ENV.tfvars"
+
+  # Fase 6: deploy-canary (build de imágenes + Argo Rollouts en EKS)

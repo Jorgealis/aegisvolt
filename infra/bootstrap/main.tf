@@ -133,7 +133,7 @@ data "aws_iam_policy_document" "trust_plan" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:pull_request"]
+      values   = [for p in var.github_sub_prefixes : "${p}:pull_request"]
     }
   }
 }
@@ -153,9 +153,11 @@ data "aws_iam_policy_document" "trust_deploy" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values = [
-        for env in ["dev", "test", "prod"] : "repo:${var.github_repo}:environment:${env}"
-      ]
+      values = flatten([
+        for p in var.github_sub_prefixes : [
+          for env in ["dev", "test", "prod"] : "${p}:environment:${env}"
+        ]
+      ])
     }
   }
 }
