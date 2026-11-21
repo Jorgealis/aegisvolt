@@ -1,4 +1,4 @@
-name: pr-checks
+﻿name: pr-checks
 
 # Checks obligatorios antes de habilitar el Merge hacia dev / test / prod.
 # Los nombres de los jobs son los "status checks" exigidos por el ruleset
@@ -30,7 +30,7 @@ jobs:
           if [[ "$BASE" == "dev"  && "$HEAD" != feature/* ]]; then echo "::error::Solo feature/* -> dev";  exit 1; fi
           if [[ "$BASE" == "test" && "$HEAD" != "dev"      ]]; then echo "::error::Solo dev -> test";    exit 1; fi
           if [[ "$BASE" == "prod" && "$HEAD" != "test"     ]]; then echo "::error::Solo test -> prod";   exit 1; fi
-          echo "Promoción válida"
+          echo "PromociÃ³n vÃ¡lida"
 
   lint-build:
     runs-on: ubuntu-latest
@@ -42,17 +42,17 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - name: ruff (lint + formato)
-        run: ruff check services tests scripts && ruff format --check services tests scripts
-      - name: Esquema GraphQL válido y al día
+        run: ruff check services tests scripts observability && ruff format --check services tests scripts observability
+      - name: Esquema GraphQL vÃ¡lido y al dÃ­a
         run: python scripts/export_schema.py --check
-      - name: docker build de las 4 imágenes
+      - name: docker build de las 4 imÃ¡genes
         run: |
           for svc in station-reservation-service:station_reservation billing-wallet-service:billing_wallet \
                      energy-dispatch-service:energy_dispatch graphql-gateway:graphql_gateway; do
             dir="${svc%%:*}"; pkg="${svc##*:}"
             docker build -q -f services/Dockerfile --build-arg SERVICE_DIR="$dir" --build-arg PACKAGE="$pkg" -t "aegisvolt/$dir:ci" services
           done
-      - name: Manifiestos Kubernetes (generados al día + kustomize + kubeconform con CRDs de Argo)
+      - name: Manifiestos Kubernetes (generados al dÃ­a + kustomize + kubeconform con CRDs de Argo)
         run: |
           python scripts/gen_k8s_base.py >/dev/null && git diff --exit-code k8s/base
           curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz kubeconform

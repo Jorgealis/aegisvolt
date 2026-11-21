@@ -34,3 +34,6 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Prefect local (base de datos del servidor y artefactos)
+.prefect/
