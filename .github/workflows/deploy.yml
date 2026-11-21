@@ -45,11 +45,11 @@ jobs:
       cluster: ${{ steps.out.outputs.cluster }}
     steps:
       - uses: actions/checkout@v5
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
       - name: terraform apply (${{ env.TARGET_ENV }})
@@ -86,7 +86,7 @@ jobs:
           - { dir: graphql-gateway, pkg: graphql_gateway }
     steps:
       - uses: actions/checkout@v5
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -113,7 +113,7 @@ jobs:
       NAMESPACE: aegisvolt-${{ needs.resolve-env.outputs.env }}
     steps:
       - uses: actions/checkout@v5
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}

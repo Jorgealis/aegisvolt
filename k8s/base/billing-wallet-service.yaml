@@ -88,7 +88,7 @@ spec:
       # Sin traffic router: el peso se logra con réplicas (5 réplicas -> 1 pod canary = 20 %).
       steps:
         - setWeight: 20
-        - pause: { duration: 60s }
+        - pause: { duration: 120s } # tráfico suficiente para que CloudWatch tenga métricas
         - analysis:
             templates:
               - templateName: error-rate-cloudwatch

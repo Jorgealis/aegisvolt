@@ -71,7 +71,7 @@ jobs:
               -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
           done
           kubectl kustomize k8s/platform/argo-rollouts > /dev/null
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
       - name: terraform fmt
         run: terraform fmt -check -recursive infra
       - name: terraform validate (bootstrap y ambientes)
@@ -138,18 +138,18 @@ jobs:
       TARGET_ENV: ${{ github.base_ref }} # workspace = rama destino (dev | test | prod)
     steps:
       - uses: actions/checkout@v5
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
           aws-region: us-east-1
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
       - name: terraform plan (${{ env.TARGET_ENV }})
         working-directory: infra
         run: |
           terraform init -input=false
           terraform workspace select "$TARGET_ENV"
           terraform plan -input=false -lock=false -var-file="envs/$TARGET_ENV.tfvars" -no-color | tee plan.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plan-${{ github.base_ref }}
           path: infra/plan.txt
