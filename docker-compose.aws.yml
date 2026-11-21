@@ -1,9 +1,11 @@
-# Override: los contenedores locales usan las tablas y log groups REALES de dev.
-# Usa tus credenciales de ~/.aws (solo lectura dentro del contenedor).
+# Override: los contenedores locales usan las tablas y log groups REALES de un
+# ambiente en AWS (dev por defecto; AEGIS_ENV=test|prod para los otros).
+# Usa tus credenciales de ~/.aws (montadas en solo lectura dentro del contenedor).
+#   $env:AEGIS_ENV = "test"
 #   docker compose -f docker-compose.yml -f docker-compose.aws.yml up -d --build
-#   python scripts/seed.py --env dev
+#   python scripts/seed.py --env $env:AEGIS_ENV
 x-aws-env: &aws-env
-  ENV: dev
+  ENV: ${AEGIS_ENV:-dev}
   APP_VERSION: local-aws
   DYNAMODB_ENDPOINT: ""
   AWS_ACCESS_KEY_ID: !reset null
@@ -16,14 +18,14 @@ x-aws-volume: &aws-volume
 
 services:
   station-reservation-service:
-    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: /aegisvolt/dev/station-reservation }
+    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: "/aegisvolt/${AEGIS_ENV:-dev}/station-reservation" }
     volumes: *aws-volume
   billing-wallet-service:
-    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: /aegisvolt/dev/billing-wallet }
+    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: "/aegisvolt/${AEGIS_ENV:-dev}/billing-wallet" }
     volumes: *aws-volume
   energy-dispatch-service:
-    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: /aegisvolt/dev/energy-dispatch }
+    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: "/aegisvolt/${AEGIS_ENV:-dev}/energy-dispatch" }
     volumes: *aws-volume
   graphql-gateway:
-    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: /aegisvolt/dev/graphql-gateway }
+    environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: "/aegisvolt/${AEGIS_ENV:-dev}/graphql-gateway" }
     volumes: *aws-volume

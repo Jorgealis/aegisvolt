@@ -1,7 +1,7 @@
 # Condición del canary: tasa de error de la NUEVA versión < 2 %.
 #   ErrorRate = ErrorCount / RequestCount (métricas de CloudWatch derivadas de los
 #   logs JSON HTTP_REQUEST por metric filters; ver infra/modules/cloudwatch/metrics.tf)
-# 4 mediciones cada 30 s; con 2 fallidas (failureLimit: 1) el análisis falla y
+# 4 mediciones cada 60 s (tras 2 min de tráfico al canary); con 2 fallidas (failureLimit: 1) el análisis falla y
 # Argo Rollouts aborta: escala el canary a 0 y deja el 100 % en la versión estable.
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
@@ -14,7 +14,7 @@ spec:
     - name: env
   metrics:
     - name: error-rate
-      interval: 30s
+      interval: 60s
       count: 4
       failureLimit: 1
       # Sin datos = sin errores registrados todavía (no se bloquea por falta de tráfico)

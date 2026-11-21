@@ -2,6 +2,9 @@
 
 Plataforma cloud-native de gestión de carga para flotas eléctricas (Proyecto Final — Patrones Arquitectónicos Avanzados).
 
+- **[Guion de la sustentación](docs/SUSTENTACION.md)**: respuesta y demo en vivo para cada pregunta del banco.
+- **[Encender / apagar la plataforma](docs/PLATAFORMA.md)**: EKS, API Gateway y canary solo para la demo (costo por hora).
+
 ## Ramas y promoción
 
 `feature/*` → PR → `dev` → PR → `test` → PR → `prod`
@@ -39,8 +42,8 @@ enable_platform = true
 - `k8s/overlays/<env>/`: namespace `aegisvolt-<env>`, ConfigMap del ambiente y réplicas (dev 1, test 2, prod 5).
 - `k8s/platform/argo-rollouts/`: controlador de Argo Rollouts v1.10.2 con `AWS_REGION` para el proveedor CloudWatch.
 
-**Canary** (`deploy.yml`, solo con la plataforma encendida): build y push a ECR con tag = SHA → `kubectl apply -k` → `setWeight 20` → pausa 60 s → análisis → `setWeight 50` → `setWeight 100`.
-Condición: `ErrorCount / RequestCount < 2 %` de la **versión nueva** (dimensión `Version` = hash de la plantilla del pod), 4 mediciones cada 30 s; 2 fallidas → aborto y rollback automático a la versión estable.
+**Canary** (`deploy.yml`, solo con la plataforma encendida): build y push a ECR con tag = SHA → `kubectl apply -k` → `setWeight 20` → pausa 2 min → análisis → `setWeight 50` → `setWeight 100`.
+Condición: `ErrorCount / RequestCount < 2 %` de la **versión nueva** (dimensión `Version` = hash de la plantilla del pod), 4 mediciones cada 60 s; 2 fallidas → aborto y rollback automático a la versión estable.
 
 **Demo de rollback:** PR que añade `FAULT_INJECTION_RATE: "0.3"` al `graphql-gateway` del overlay, tráfico con `python scripts/load.py --url <graphql_url>` y `kubectl argo rollouts get rollout graphql-gateway -n aegisvolt-dev --watch`.
 
