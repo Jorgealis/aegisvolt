@@ -1,0 +1,52 @@
+# Condición del canary: tasa de error de la NUEVA versión < 2 %.
+#   ErrorRate = ErrorCount / RequestCount (métricas de CloudWatch derivadas de los
+#   logs JSON HTTP_REQUEST por metric filters; ver infra/modules/cloudwatch/metrics.tf)
+# 4 mediciones cada 30 s; con 2 fallidas (failureLimit: 1) el análisis falla y
+# Argo Rollouts aborta: escala el canary a 0 y deja el 100 % en la versión estable.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: error-rate-cloudwatch
+spec:
+  args:
+    - name: service
+    - name: version # hash de la plantilla del pod canary (= campo "version" de los logs)
+    - name: env
+  metrics:
+    - name: error-rate
+      interval: 30s
+      count: 4
+      failureLimit: 1
+      # Sin datos = sin errores registrados todavía (no se bloquea por falta de tráfico)
+      successCondition: "len(result[0].Values) == 0 || all(result[0].Values, {# < 0.02})"
+      provider:
+        cloudWatch:
+          interval: 5m
+          metricDataQueries:
+            - id: rate
+              label: ErrorRate
+              expression: "FILL(errors, 0) / requests"
+            - id: errors
+              returnData: false
+              metricStat:
+                period: 60
+                stat: Sum
+                metric:
+                  namespace: AegisVolt
+                  metricName: ErrorCount
+                  dimensions:
+                    - { name: Service, value: "{{args.service}}" }
+                    - { name: Version, value: "{{args.version}}" }
+                    - { name: Environment, value: "{{args.env}}" }
+            - id: requests
+              returnData: false
+              metricStat:
+                period: 60
+                stat: Sum
+                metric:
+                  namespace: AegisVolt
+                  metricName: RequestCount
+                  dimensions:
+                    - { name: Service, value: "{{args.service}}" }
+                    - { name: Version, value: "{{args.version}}" }
+                    - { name: Environment, value: "{{args.env}}" }

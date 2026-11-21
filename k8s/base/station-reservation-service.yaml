@@ -1,0 +1,104 @@
+# Generado por scripts/gen_k8s_base.py: no editar a mano.
+apiVersion: v1
+kind: Service
+metadata:
+  name: station-reservation-service
+  labels:
+    app: station-reservation-service
+spec:
+  type: ClusterIP
+  selector:
+    app: station-reservation-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: station-reservation-service
+  labels:
+    app: station-reservation-service
+spec:
+  replicas: 1 # cada overlay fija las réplicas del ambiente
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: station-reservation-service
+  template:
+    metadata:
+      labels:
+        app: station-reservation-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: aegisvolt/station-reservation-service # el pipeline fija <ECR>/aegisvolt/station-reservation-service:<sha>
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: ENV
+              valueFrom:
+                configMapKeyRef: { name: aegisvolt-config, key: ENV }
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef: { name: aegisvolt-config, key: AWS_REGION }
+            - name: SERVICE_NAME
+              value: station-reservation
+            - name: CLOUDWATCH_LOG_GROUP
+              value: /aegisvolt/$(ENV)/station-reservation
+            # Versión = hash de la plantilla del pod: separa stable y canary en
+            # los logs y en las métricas que evalúa el análisis del canary.
+            - name: APP_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['rollouts-pod-template-hash']
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+  strategy:
+    canary:
+      # Sin traffic router: el peso se logra con réplicas (5 réplicas -> 1 pod canary = 20 %).
+      steps:
+        - setWeight: 20
+        - pause: { duration: 60s }
+        - analysis:
+            templates:
+              - templateName: error-rate-cloudwatch
+            args:
+              - name: service
+                value: station-reservation
+              - name: version
+                valueFrom:
+                  podTemplateHashValue: Latest
+              - name: env
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.labels['aegisvolt.io/env']
+        - setWeight: 50
+        - pause: { duration: 30s }
+        - setWeight: 100

@@ -1,0 +1,156 @@
+name: deploy
+
+# Post-merge. El push directo a dev/test/prod está bloqueado por el ruleset,
+# así que este workflow solo corre cuando se fusiona un PR.
+on:
+  push:
+    branches: [dev, test, prod]
+
+permissions:
+  contents: read
+
+# Nunca dos despliegues simultáneos del mismo ambiente.
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ARGO_ROLLOUTS_VERSION: v1.10.2
+
+jobs:
+  resolve-env:
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.e.outputs.env }}
+    steps:
+      - id: e
+        # Detección dinámica del ambiente: la rama destino del merge
+        # (GITHUB_REF_NAME = dev | test | prod) es el nombre del workspace.
+        run: echo "env=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+  terraform-apply:
+    needs: resolve-env
+    runs-on: ubuntu-latest
+    # El GitHub Environment da el claim OIDC "environment:<env>", el único que
+    # puede asumir el rol aegisvolt-gha-deploy.
+    environment: ${{ needs.resolve-env.outputs.env }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET_ENV: ${{ needs.resolve-env.outputs.env }}
+    outputs:
+      platform: ${{ steps.out.outputs.platform }}
+      cluster: ${{ steps.out.outputs.cluster }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: terraform apply (${{ env.TARGET_ENV }})
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform workspace select "$TARGET_ENV"
+          terraform apply -input=false -auto-approve -var-file="envs/$TARGET_ENV.tfvars"
+      - id: out
+        working-directory: infra
+        run: |
+          echo "platform=$(terraform output -raw platform_enabled)" >> "$GITHUB_OUTPUT"
+          echo "cluster=$(terraform output -raw eks_cluster_name 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
+      - name: Resumen
+        run: |
+          if [ "${{ steps.out.outputs.platform }}" != "true" ]; then
+            echo "### Plataforma apagada en $TARGET_ENV (enable_platform = false): sin EKS, se omite el canary" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build-push:
+    needs: [resolve-env, terraform-apply]
+    if: needs.terraform-apply.outputs.platform == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.env }}
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      matrix:
+        include:
+          - { dir: station-reservation-service, pkg: station_reservation }
+          - { dir: billing-wallet-service, pkg: billing_wallet }
+          - { dir: energy-dispatch-service, pkg: energy_dispatch }
+          - { dir: graphql-gateway, pkg: graphql_gateway }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build y push (tag = SHA del commit, el mismo artefacto se promueve entre ambientes)
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/aegisvolt/${{ matrix.dir }}:${{ github.sha }}
+        run: |
+          if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then echo "ya existe $IMAGE"; exit 0; fi
+          docker build -f services/Dockerfile --build-arg SERVICE_DIR=${{ matrix.dir }} --build-arg PACKAGE=${{ matrix.pkg }} -t "$IMAGE" services
+          docker push "$IMAGE"
+
+  deploy-canary:
+    needs: [resolve-env, terraform-apply, build-push]
+    if: needs.terraform-apply.outputs.platform == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.env }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET_ENV: ${{ needs.resolve-env.outputs.env }}
+      NAMESPACE: aegisvolt-${{ needs.resolve-env.outputs.env }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: kubeconfig + plugin de Argo Rollouts
+        run: |
+          aws eks update-kubeconfig --name "${{ needs.terraform-apply.outputs.cluster }}" --region "$AWS_REGION"
+          curl -sSLo kubectl-argo-rollouts "https://github.com/argoproj/argo-rollouts/releases/download/${ARGO_ROLLOUTS_VERSION}/kubectl-argo-rollouts-linux-amd64"
+          sudo install -m 0755 kubectl-argo-rollouts /usr/local/bin/kubectl-argo-rollouts
+      - name: Controlador de Argo Rollouts
+        run: |
+          kubectl apply --server-side --force-conflicts -k k8s/platform/argo-rollouts
+          kubectl -n argo-rollouts rollout status deployment/argo-rollouts --timeout 5m
+      - name: Aplicar overlay del ambiente con las imágenes nuevas
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          mkdir -p .deploy
+          {
+            echo "resources: [../k8s/overlays/$TARGET_ENV]"
+            echo "images:"
+            for svc in station-reservation-service billing-wallet-service energy-dispatch-service graphql-gateway; do
+              echo "  - { name: aegisvolt/$svc, newName: $REGISTRY/aegisvolt/$svc, newTag: $GITHUB_SHA }"
+            done
+          } > .deploy/kustomization.yaml
+          cat .deploy/kustomization.yaml
+          kubectl apply -k .deploy
+      - name: Canary 20 % -> análisis CloudWatch -> 50 % -> 100 %
+        run: |
+          # "status" falla si el análisis aborta el rollout (rollback automático a la versión estable)
+          for r in station-reservation-service billing-wallet-service energy-dispatch-service graphql-gateway; do
+            kubectl argo rollouts status "$r" -n "$NAMESPACE" --timeout 10m
+          done
+      - name: Estado final
+        if: always()
+        run: |
+          for r in station-reservation-service billing-wallet-service energy-dispatch-service graphql-gateway; do
+            kubectl argo rollouts get rollout "$r" -n "$NAMESPACE" --no-color || true
+          done

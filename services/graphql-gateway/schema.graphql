@@ -1,0 +1,107 @@
+type Connector {
+  id: ID!
+  stationId: ID!
+  powerKw: Int!
+  status: ConnectorStatus!
+}
+
+enum ConnectorStatus {
+  AVAILABLE
+  RESERVED
+  CHARGING
+  OUT_OF_SERVICE
+}
+
+type FeatureFlag {
+  name: String!
+  enabled: Boolean!
+  env: String!
+}
+
+type Mutation {
+  """
+  Dispara la SAGA Reserva -> Cobro -> Activación y devuelve su estado final
+  """
+  reserveAndCharge(fleetId: ID!, stationId: ID!, connectorId: ID!, estimatedKwh: Float!): Saga!
+  topUpWallet(fleetId: ID!, amount: Float!): Wallet!
+}
+
+type Query {
+  """Ambiente estático que atiende esta API (dev | test | prod)"""
+  environment: String!
+  stations(city: String = null): [Station!]!
+  wallet(fleetId: ID!): Wallet
+  tariff: Tariff!
+  saga(id: ID!): Saga
+  sagas(limit: Int! = 20): [Saga!]!
+  telemetry(sessionId: ID!): [Telemetry!]!
+  featureFlags: [FeatureFlag!]!
+}
+
+type Saga {
+  id: ID!
+  correlationId: ID!
+  state: SagaState!
+  fleetId: ID!
+  stationId: ID!
+  connectorId: ID!
+  estimatedKwh: Float!
+  amount: Float
+  error: String
+  steps: [SagaStep!]!
+  createdAt: String!
+  updatedAt: String!
+}
+
+enum SagaState {
+  STARTED
+  RESERVED
+  CHARGED
+  COMPLETED
+  COMPENSATING
+  COMPENSATED
+  FAILED
+  COMPENSATION_FAILED
+}
+
+type SagaStep {
+  name: String!
+  status: String!
+  at: String!
+  error: String
+}
+
+type Station {
+  id: ID!
+  name: String!
+  city: String!
+  connectors: [Connector!]!
+}
+
+type Tariff {
+  basePerKwh: Float!
+  effectivePerKwh: Float!
+  surgeFlag: Boolean!
+  surgeActive: Boolean!
+  surgeHours: String!
+}
+
+type Telemetry {
+  sessionId: ID!
+  kwh: Float!
+  powerKw: Float!
+  at: String!
+}
+
+type Wallet {
+  fleetId: ID!
+  balance: Float!
+  transactions: [WalletTx!]!
+}
+
+type WalletTx {
+  sagaId: ID!
+  type: String!
+  amount: Float!
+  at: String!
+}
