@@ -1,0 +1,22 @@
+# Controlador de Argo Rollouts (versión fija) con la región para el proveedor
+# de métricas de CloudWatch. Los permisos (cloudwatch:GetMetricData) vienen del
+# rol IAM de los nodos (infra/modules/eks).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argo-rollouts
+
+resources:
+  - namespace.yaml
+  - https://github.com/argoproj/argo-rollouts/releases/download/v1.10.2/install.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: argo-rollouts
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: AWS_REGION
+            value: us-east-1

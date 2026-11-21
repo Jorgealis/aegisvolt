@@ -133,7 +133,7 @@ data "aws_iam_policy_document" "trust_plan" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:pull_request"]
+      values   = [for p in var.github_sub_prefixes : "${p}:pull_request"]
     }
   }
 }
@@ -153,9 +153,11 @@ data "aws_iam_policy_document" "trust_deploy" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values = [
-        for env in ["dev", "test", "prod"] : "repo:${var.github_repo}:environment:${env}"
-      ]
+      values = flatten([
+        for p in var.github_sub_prefixes : [
+          for env in ["dev", "test", "prod"] : "${p}:environment:${env}"
+        ]
+      ])
     }
   }
 }
@@ -206,6 +208,7 @@ resource "aws_iam_role_policy_attachment" "gha_deploy_admin" {
 # Alerta de presupuesto (las 2 primeras budgets de la cuenta son gratis)
 # ---------------------------------------------------------------------------
 resource "aws_budgets_budget" "monthly" {
+  count        = var.budget_email == "" ? 0 : 1
   name         = "aegisvolt-monthly"
   budget_type  = "COST"
   limit_amount = tostring(var.budget_limit_usd)
@@ -227,4 +230,69 @@ resource "aws_budgets_budget" "monthly" {
       subscriber_email_addresses = [var.budget_email]
     }
   }
+}
+
+# ---------------------------------------------------------------------------
+# API Gateway -> CloudWatch Logs (ajuste de TODA la cuenta, por eso vive aquí
+# y no en los workspaces). Permite los access logs en /aegisvolt/<env>/apigw.
+# ---------------------------------------------------------------------------
+data "aws_iam_policy_document" "apigw_trust" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["apigateway.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "apigw_logs" {
+  name               = "aegisvolt-apigw-cloudwatch"
+  assume_role_policy = data.aws_iam_policy_document.apigw_trust.json
+}
+
+resource "aws_iam_role_policy_attachment" "apigw_logs" {
+  role       = aws_iam_role.apigw_logs.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+}
+
+resource "aws_api_gateway_account" "this" {
+  cloudwatch_role_arn = aws_iam_role.apigw_logs.arn
+}
+
+# ---------------------------------------------------------------------------
+# ECR: una imagen por servicio, compartida por los 3 ambientes (se promueve
+# el MISMO artefacto, etiquetado con el SHA del commit, de dev a test a prod).
+# Costo: solo almacenamiento (~USD 0,10/GB-mes); se guardan las últimas 10.
+# ---------------------------------------------------------------------------
+locals {
+  services = ["station-reservation-service", "billing-wallet-service", "energy-dispatch-service", "graphql-gateway"]
+}
+
+resource "aws_ecr_repository" "svc" {
+  for_each             = toset(local.services)
+  name                 = "aegisvolt/${each.key}"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true # permite borrar todo al cerrar el proyecto
+
+  image_scanning_configuration {
+    scan_on_push = true # escaneo básico: gratis
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "svc" {
+  for_each   = aws_ecr_repository.svc
+  repository = each.value.name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Conservar solo las 10 imágenes más recientes"
+      selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 10 }
+      action       = { type = "expire" }
+    }]
+  })
+}
+
+output "ecr_registry" {
+  value = split("/", aws_ecr_repository.svc["graphql-gateway"].repository_url)[0]
 }
