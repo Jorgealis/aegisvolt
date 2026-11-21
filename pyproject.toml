@@ -5,6 +5,7 @@ pythonpath = [
   "services/billing-wallet-service",
   "services/energy-dispatch-service",
   "services/graphql-gateway",
+  "observability/prefect",
 ]
 testpaths = ["tests"]
 addopts = "-ra"
@@ -19,4 +20,4 @@ select = ["E", "F", "I", "B", "UP"]
 ignore = ["B008"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["aegis_common", "station_reservation", "billing_wallet", "energy_dispatch", "graphql_gateway"]
+known-first-party = ["aegis_common", "station_reservation", "billing_wallet", "energy_dispatch", "graphql_gateway", "audit_logic"]
