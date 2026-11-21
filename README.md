@@ -44,6 +44,18 @@ Condición: `ErrorCount / RequestCount < 2 %` de la **versión nueva** (dimensi�
 
 **Demo de rollback:** PR que añade `FAULT_INJECTION_RATE: "0.3"` al `graphql-gateway` del overlay, tráfico con `python scripts/load.py --url <graphql_url>` y `kubectl argo rollouts get rollout graphql-gateway -n aegisvolt-dev --watch`.
 
+## Frontend
+
+SPA React + Vite + TypeScript (`frontend/`) con las 4 vistas: estaciones y conectores en vivo, reservar y activar (SAGA con su línea de pasos y `correlation_id`), feature flags con la tarifa vigente, e historial de SAGAs y billeteras. Consulta el GraphQL cada 2 s; la banda superior toma el color del ambiente que responde (dev verde, test ámbar, prod rojo).
+
+```powershell
+cd frontend; npm install
+npm run dev                  # contra docker compose local (http://localhost:8080/graphql)
+npm run dev -- --mode dev    # contra API Gateway de dev (URL en .env.dev.local o ?api=<url>)
+```
+
+Demo de flags sin redesplegar: dos pestañas (`--mode dev` y `--mode prod`, o `?api=` con cada URL), `python scripts/flag.py dev SIMULATE_CHARGER_HARDWARE_FAULT true` y en ≤ 5 s solo la de dev muestra la flag en ON y las reservas terminan COMPENSATED.
+
 ## Observabilidad
 
 **CloudWatch:** cada servicio escribe logs JSON (`ts, level, env, service, version, correlation_id, saga_id, event`) en `/aegisvolt/<env>/<servicio>`. Rastreo de una SAGA en Logs Insights (seleccionar los 4 grupos del ambiente):

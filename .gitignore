@@ -37,3 +37,6 @@ Thumbs.db
 
 # Prefect local (base de datos del servidor y artefactos)
 .prefect/
+
+# URLs reales de API Gateway por ambiente (cambian al recrear la plataforma)
+frontend/.env.*.local
