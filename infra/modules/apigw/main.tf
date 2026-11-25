@@ -87,7 +87,7 @@ resource "aws_autoscaling_attachment" "nodes" {
 # (IPs privadas del NLB / PrivateLink), nunca desde internet.
 resource "aws_vpc_security_group_ingress_rule" "nodeport" {
   security_group_id = var.cluster_security_group_id
-  description       = "NLB -> NodePort graphql-gateway"
+  description       = "NLB to NodePort graphql-gateway"
   cidr_ipv4         = var.vpc_cidr
   ip_protocol       = "tcp"
   from_port         = var.node_port
