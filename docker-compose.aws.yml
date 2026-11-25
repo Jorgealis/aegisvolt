@@ -4,6 +4,12 @@
 #   $env:AEGIS_ENV = "test"
 #   docker compose -f docker-compose.yml -f docker-compose.aws.yml up -d --build
 #   python scripts/seed.py --env $env:AEGIS_ENV
+#
+# Varios ambientes a la vez (selector de ambiente del frontend):
+#   .\scripts\envs.ps1 up      -> gateway dev :8180, test :8280, prod :8380
+#                                 billing dev :8182, test :8282, prod :8382
+# Solo el gateway y billing publican puerto (GATEWAY_PORT, BILLING_PORT); el
+# resto queda en la red interna de cada proyecto para que los stacks no choquen.
 x-aws-env: &aws-env
   ENV: ${AEGIS_ENV:-dev}
   APP_VERSION: local-aws
@@ -17,15 +23,21 @@ x-aws-volume: &aws-volume
   - ${USERPROFILE:-${HOME}}/.aws:/home/app/.aws:ro
 
 services:
+  dynamodb-local:
+    ports: !reset []
   station-reservation-service:
     environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: "/aegisvolt/${AEGIS_ENV:-dev}/station-reservation" }
     volumes: *aws-volume
+    ports: !reset []
   billing-wallet-service:
     environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: "/aegisvolt/${AEGIS_ENV:-dev}/billing-wallet" }
     volumes: *aws-volume
+    ports: !override ["${BILLING_PORT:-8102}:8000"] # demo de idempotencia (refund dos veces)
   energy-dispatch-service:
     environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: "/aegisvolt/${AEGIS_ENV:-dev}/energy-dispatch" }
     volumes: *aws-volume
+    ports: !reset []
   graphql-gateway:
     environment: { <<: *aws-env, CLOUDWATCH_LOG_GROUP: "/aegisvolt/${AEGIS_ENV:-dev}/graphql-gateway" }
     volumes: *aws-volume
+    ports: !override ["${GATEWAY_PORT:-8080}:8000"]

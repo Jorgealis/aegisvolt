@@ -9,7 +9,7 @@
   --warn: #f59e0b;
   --bad: #ef4444;
   --info: #38bdf8;
-  --accent: #22c55e;
+  --accent: #8b98a5; /* gris hasta saber qué ambiente responde */
   --radius: 10px;
   color-scheme: dark;
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -69,6 +69,38 @@ body {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 0.8rem;
+}
+/* Selector de ambiente: cada opción lleva el color de su banda. */
+.env-switch {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+}
+.env-opt {
+  grid-column: auto;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.env-opt:hover {
+  color: var(--text);
+}
+.opt-local { --c: var(--info); }
+.opt-dev { --c: var(--ok); }
+.opt-test { --c: var(--warn); }
+.opt-prod { --c: var(--bad); }
+.env-opt.active {
+  background: var(--c);
+  color: #0b0f14;
 }
 .endpoint {
   margin-left: auto;
