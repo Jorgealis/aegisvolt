@@ -32,3 +32,11 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 1
+  # DEMO DE ROLLBACK: la nueva versión del gateway falla el 30 % de las peticiones.
+  - target:
+      kind: Rollout
+      name: graphql-gateway
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value: { name: FAULT_INJECTION_RATE, value: "0.3" }
