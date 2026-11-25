@@ -182,6 +182,32 @@ resource "aws_eks_access_policy_association" "admin" {
   depends_on = [aws_eks_access_entry.admin]
 }
 
+# Launch template de los nodos: IMDSv2 obligatorio con 2 saltos. Con 1 salto
+# (valor por defecto de AL2023) los pods no alcanzan el metadata service y no
+# obtienen las credenciales del rol del nodo ("Unable to locate credentials").
+resource "aws_launch_template" "nodes" {
+  name_prefix = "${local.name}-nodes-"
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size = 20
+      volume_type = "gp3"
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags          = { Name = "${local.name}-node" }
+  }
+}
+
 resource "aws_eks_node_group" "default" {
   cluster_name    = aws_eks_cluster.this.name
   node_group_name = "${local.name}-nodes"
@@ -190,7 +216,11 @@ resource "aws_eks_node_group" "default" {
   ami_type        = "AL2023_x86_64_STANDARD"
   capacity_type   = "ON_DEMAND"
   instance_types  = [var.node_instance_type]
-  disk_size       = 20
+
+  launch_template {
+    id      = aws_launch_template.nodes.id
+    version = aws_launch_template.nodes.latest_version
+  }
 
   scaling_config {
     desired_size = var.node_desired
