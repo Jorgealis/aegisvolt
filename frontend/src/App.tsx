@@ -1,4 +1,4 @@
-import { GRAPHQL_URL } from "./api";
+import { ENDPOINTS, GRAPHQL_URL, switchEndpoint } from "./api";
 import { Flags } from "./components/Flags";
 import { History } from "./components/History";
 import { ReserveForm } from "./components/ReserveForm";
@@ -23,6 +23,20 @@ export function App() {
         <span className="env-tag" aria-label={`Ambiente ${env}`}>
           {env.toUpperCase()}
         </span>
+        <nav className="env-switch" aria-label="Cambiar de ambiente">
+          {ENDPOINTS.map((e) => (
+            <button
+              key={e.env}
+              type="button"
+              className={`env-opt opt-${e.env}${e.url === GRAPHQL_URL ? " active" : ""}`}
+              aria-pressed={e.url === GRAPHQL_URL}
+              title={e.url}
+              onClick={() => switchEndpoint(e.url)}
+            >
+              {e.env}
+            </button>
+          ))}
+        </nav>
         <code className="endpoint" title="Endpoint GraphQL">
           {GRAPHQL_URL}
         </code>

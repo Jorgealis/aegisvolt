@@ -1,9 +1,26 @@
 // Cliente GraphQL mínimo (fetch). La URL del endpoint depende del ambiente:
 //   1) ?api=<url> en la barra de direcciones (útil si API Gateway se recreó)
 //   2) VITE_GRAPHQL_URL del archivo .env.<modo>
+//   3) el selector de ambiente de la barra superior (escribe ?api=...)
 const fromQuery = new URLSearchParams(window.location.search).get("api");
 
 export const GRAPHQL_URL: string = fromQuery ?? import.meta.env.VITE_GRAPHQL_URL ?? "http://localhost:8080/graphql";
+
+// Endpoints del selector. Por defecto, los stacks de scripts/envs.ps1 (Docker
+// contra las tablas reales de cada ambiente). Con la plataforma encendida se
+// reemplazan por la URL de API Gateway en .env.local: VITE_ENDPOINT_TEST=https://...
+export const ENDPOINTS: { env: string; url: string }[] = [
+  { env: "local", url: import.meta.env.VITE_ENDPOINT_LOCAL ?? "http://localhost:8080/graphql" },
+  { env: "dev", url: import.meta.env.VITE_ENDPOINT_DEV ?? "http://localhost:8180/graphql" },
+  { env: "test", url: import.meta.env.VITE_ENDPOINT_TEST ?? "http://localhost:8280/graphql" },
+  { env: "prod", url: import.meta.env.VITE_ENDPOINT_PROD ?? "http://localhost:8380/graphql" },
+];
+
+export function switchEndpoint(url: string): void {
+  const params = new URLSearchParams(window.location.search);
+  params.set("api", url);
+  window.location.search = params.toString(); // recarga: todo el estado parte limpio
+}
 
 export class GraphQLError extends Error {}
 

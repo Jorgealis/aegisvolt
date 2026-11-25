@@ -15,6 +15,7 @@ Bucket de estados: `aegisvolt-tfstate-185658217743`
    - AWS: S3 (bucket de estados), DynamoDB (tablas `aegisvolt-*`), CloudWatch Logs Insights, VPC (route tables).
    - Prefect: `http://127.0.0.1:4200` (servidor arrancado y flows ejecutados una vez).
    - Frontend de dev (`npm run dev -- --mode dev`) y de prod (opción A: `--mode prod`; opción B: `docker compose` con `AEGIS_ENV=prod` y `npm run dev`).
+   - Opción B con los tres ambientes a la vez: `.\scripts\envs.ps1 up` y `npm run dev`; el selector LOCAL / DEV / TEST / PROD de la barra superior cambia de ambiente (gateway en 8180 / 8280 / 8380, tablas reales de cada uno).
 3. Datos limpios: `python scripts/seed.py --env dev`, `--env test` y `--env prod` (conectores AVAILABLE, saldos 500 / 5).
 4. Flags en estado inicial: `python scripts/flag.py dev`, `test`, `prod` (solo listar).
 
@@ -165,7 +166,7 @@ Demo (llamar el refund dos veces; el saldo no cambia la segunda vez):
 
 ```powershell
 # Opción A: kubectl port-forward svc/billing-wallet-service 8102:8000 -n aegisvolt-test   (en otra terminal)
-# Opción B: docker compose con AEGIS_ENV=test ya expone 8102
+# Opción B: docker compose con AEGIS_ENV=test ya expone 8102 (con scripts/envs.ps1, billing de test está en 8282)
 $SAGA = "<saga_id de la SAGA compensada>"
 $r = @{ fleet_id = "FLEET-001" } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri "http://localhost:8102/charges/$SAGA/refund" -ContentType "application/json" -Body $r
