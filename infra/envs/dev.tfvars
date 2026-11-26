@@ -10,5 +10,5 @@ feature_flags = {
 
 # Plataforma con costo por hora (EKS, NAT, NLB, API Gateway): apagada.
 # Encender SOLO para la demo/sustentación: enable_platform = true
-enable_platform = true
+enable_platform = false
 node_desired    = 2
